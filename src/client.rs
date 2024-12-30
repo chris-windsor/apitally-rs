@@ -77,7 +77,7 @@ impl ApitallyClient {
         instance
     }
 
-    fn send_data(&self, url_suffix: &str, data: Value) -> Result<(), reqwest::Error> {
+    fn send_data(&self, url_suffix: &str, data: Value) -> Result<(), Box<dyn std::error::Error>> {
         let base_url = self.base_url.clone();
         let url_suffix = url_suffix.to_owned();
 
@@ -92,7 +92,7 @@ impl ApitallyClient {
         Ok(())
     }
 
-    pub fn send_startup_data(&self) -> Result<(), reqwest::Error> {
+    pub fn send_startup_data(&self) -> Result<(), Box<dyn std::error::Error>> {
         let message_id = Uuid::new_v4();
 
         #[derive(Serialize)]
@@ -121,7 +121,7 @@ impl ApitallyClient {
         &self,
         request_key: Uuid,
         request_meta: RequestMeta,
-    ) -> Result<(), reqwest::Error> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let _unhandled = self
             .request_stash
             .lock()
@@ -135,7 +135,7 @@ impl ApitallyClient {
         &self,
         request_key: Uuid,
         response_meta: ResponseMeta,
-    ) -> Result<(), reqwest::Error> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request_stash = self.request_stash.lock().unwrap();
 
         let request_meta = request_stash.get(&request_key).unwrap().clone();

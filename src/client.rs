@@ -7,8 +7,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ApitallyClient {
-    client_id: String,
-    environment: String,
+    base_url: String,
     instance_id: Uuid,
 }
 
@@ -52,11 +51,11 @@ const URL_SYNC_SUFFIX: &str = "sync";
 
 impl ApitallyClient {
     pub fn new(client_id: &str, environment: &str) -> Self {
+        let base_url = format!("https://hub.apitally.io/v2/{client_id}/{environment}",);
         let instance_id = Uuid::new_v4();
 
         let instance = Self {
-            client_id: client_id.to_string(),
-            environment: environment.to_string(),
+            base_url,
             instance_id,
         };
 
@@ -66,15 +65,12 @@ impl ApitallyClient {
     }
 
     fn send_data(&self, url_suffix: &str, data: Value) -> Result<(), reqwest::Error> {
-        let client_id = self.client_id.clone();
-        let environment = self.environment.clone();
+        let base_url = self.base_url.clone();
         let url_suffix = url_suffix.to_owned();
 
         tokio::task::spawn(async move {
             let _unhandled = reqwest::Client::new()
-                .post(format!(
-                    "https://hub.apitally.io/v2/{client_id}/{environment}/{url_suffix}",
-                ))
+                .post(format!("{base_url}/{url_suffix}",))
                 .json(&data)
                 .send()
                 .await;

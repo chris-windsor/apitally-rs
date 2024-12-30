@@ -2,7 +2,10 @@ pub mod client;
 
 use std::task::{Context, Poll};
 
-use axum::{extract::Request, response::Response};
+use axum::{
+    extract::{MatchedPath, Request},
+    response::Response,
+};
 use client::{ApitallyClient, RequestMeta};
 use futures_util::future::BoxFuture;
 use tower::{Layer, Service};
@@ -42,7 +45,12 @@ where
 
     fn call(&mut self, request: Request) -> Self::Future {
         let _unhandled = self.client.send_request_data(RequestMeta {
-            uri: request.uri().path().to_string(),
+            uri: request
+                .extensions()
+                .get::<MatchedPath>()
+                .unwrap()
+                .as_str()
+                .to_owned(),
         });
 
         let future = self.inner.call(request);

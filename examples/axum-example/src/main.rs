@@ -16,6 +16,10 @@ async fn main() {
     let app = Router::new()
         .route("/route-one", get(|| async { "howdy from route one!" }))
         .route("/route-two", get(|| async { "howdy from route two!" }))
+        .route(
+            "/route/:dynamic",
+            get(|| async { "howdy from route dynamic!" }),
+        )
         .layer(ApitallyLayer(api_tally_client));
 
     let port = env::var("PORT").unwrap_or_else(|_| "3000".to_string());

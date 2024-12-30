@@ -3,12 +3,15 @@ pub mod client;
 use std::task::{Context, Poll};
 
 use axum::{
+    body::HttpBody,
     extract::{MatchedPath, Request},
+    http::header::CONTENT_LENGTH,
     response::Response,
 };
-use client::{ApitallyClient, RequestMeta};
+use client::{ApitallyClient, RequestMeta, ResponseMeta};
 use futures_util::future::BoxFuture;
 use tower::{Layer, Service};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ApitallyLayer(pub ApitallyClient);
@@ -39,23 +42,41 @@ where
     type Error = S::Error;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
+    #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
-        let _unhandled = self.client.send_request_data(RequestMeta {
-            uri: request
-                .extensions()
-                .get::<MatchedPath>()
-                .unwrap()
-                .as_str()
-                .to_owned(),
-        });
+        let request_key = Uuid::new_v4();
+
+        let _unhandled = self.client.stash_request_data(
+            request_key,
+            RequestMeta {
+                content_length: match request.headers().get(CONTENT_LENGTH) {
+                    Some(content_length) => content_length.to_str().unwrap().parse().unwrap(),
+                    None => 0,
+                },
+                method: request.method().as_str().to_owned(),
+                uri: match request.extensions().get::<MatchedPath>() {
+                    Some(matched_path) => matched_path.as_str().to_owned(),
+                    None => request.uri().path().to_owned(),
+                },
+            },
+        );
 
         let future = self.inner.call(request);
+        let client = self.client.clone();
         Box::pin(async move {
             let response: Response = future.await?;
+
+            let _unhandled = client.send_request_data(
+                request_key,
+                ResponseMeta {
+                    status: response.status(),
+                    size: response.body().size_hint().exact().unwrap_or(0) as usize,
+                },
+            );
 
             Ok(response)
         })

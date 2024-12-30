@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use axum::http::StatusCode;
 use serde::Serialize;
@@ -9,10 +12,19 @@ use uuid::Uuid;
 pub struct ApitallyClient {
     base_url: String,
     instance_id: Uuid,
+    request_stash: Arc<Mutex<HashMap<Uuid, RequestMeta>>>,
 }
 
+#[derive(Clone)]
 pub struct RequestMeta {
+    pub content_length: usize,
+    pub method: String,
     pub uri: String,
+}
+
+pub struct ResponseMeta {
+    pub size: usize,
+    pub status: StatusCode,
 }
 
 #[derive(Serialize)]
@@ -57,6 +69,7 @@ impl ApitallyClient {
         let instance = Self {
             base_url,
             instance_id,
+            request_stash: Default::default(),
         };
 
         let _unhandled = instance.send_startup_data();
@@ -104,21 +117,41 @@ impl ApitallyClient {
         Ok(())
     }
 
-    pub fn send_request_data(&self, req_meta: RequestMeta) -> Result<(), reqwest::Error> {
-        let message_uuid = Uuid::new_v4();
+    pub fn stash_request_data(
+        &self,
+        request_key: Uuid,
+        request_meta: RequestMeta,
+    ) -> Result<(), reqwest::Error> {
+        let _unhandled = self
+            .request_stash
+            .lock()
+            .unwrap()
+            .insert(request_key, request_meta);
+
+        Ok(())
+    }
+
+    pub fn send_request_data(
+        &self,
+        request_key: Uuid,
+        response_meta: ResponseMeta,
+    ) -> Result<(), reqwest::Error> {
+        let request_stash = self.request_stash.lock().unwrap();
+
+        let request_meta = request_stash.get(&request_key).unwrap().clone();
 
         let body = RequestsBundleMessage {
             time_offset: 0,
             instance_uuid: self.instance_id.clone(),
-            message_uuid,
+            message_uuid: request_key,
             requests: vec![CapturedRequest {
                 consumer: None,
-                method: String::from("POST"),
-                path: req_meta.uri,
-                status_code: StatusCode::OK.as_u16(),
+                method: request_meta.method,
+                path: request_meta.uri,
+                status_code: response_meta.status.as_u16(),
                 request_count: 1,
-                request_size_sum: 100,
-                response_size_sum: 100,
+                request_size_sum: request_meta.content_length,
+                response_size_sum: response_meta.size,
                 response_times: HashMap::from([("0".to_string(), 1)]),
                 request_sizes: HashMap::from([("0".to_string(), 1)]),
                 response_sizes: HashMap::from([("0".to_string(), 1)]),

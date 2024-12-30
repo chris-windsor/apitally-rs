@@ -2,6 +2,11 @@
 name = "apitally"
 version = "0.1.0"
 edition = "2021"
+description = "Apitally middleware"
+license = "MIT"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/chris-windsor/apitally-rs"
 
 [dependencies]
 axum = "0.7.9"

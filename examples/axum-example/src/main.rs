@@ -1,6 +1,6 @@
 use std::{env, net::SocketAddr};
 
-use apitally::{client::ApitallyClient, ApitallyLayer};
+use apitally::{ApitallyClient, ApitallyLayer, RequestLogConfig};
 use axum::{routing::get, Router};
 use dotenvy::dotenv;
 use dotenvy_macro::dotenv;
@@ -11,7 +11,11 @@ async fn main() {
 
     let apitally_client_id = dotenv!("APITALLY_CLIENT_ID");
     let apitally_environment = dotenv!("APITALLY_ENVIRONMENT");
-    let api_tally_client = ApitallyClient::new(apitally_client_id, apitally_environment);
+    let mut api_tally_client = ApitallyClient::new(apitally_client_id, apitally_environment);
+    api_tally_client.set_request_log_config(RequestLogConfig {
+        enabled: true,
+        ..Default::default()
+    });
 
     let app = Router::new()
         .route("/route-one", get(|| async { "howdy from route one!" }))

@@ -10,8 +10,10 @@ use futures_util::future::BoxFuture;
 use tower::{Layer, Service};
 use uuid::Uuid;
 
-use crate::client::{RequestMeta, ResponseMeta};
-use crate::ApitallyClient;
+use crate::{
+    client::{RequestMeta, ResponseMeta},
+    ApitallyClient,
+};
 
 #[derive(Clone)]
 pub struct ApitallyLayer(pub ApitallyClient);
@@ -22,7 +24,10 @@ impl<S> Layer<S> for ApitallyLayer {
     fn layer(&self, inner: S) -> Self::Service {
         ApitallyMiddleware {
             inner,
-            client: self.0.clone(),
+            client: ApitallyClient {
+                framework: "rs:axum".to_string(),
+                ..self.0.clone()
+            },
         }
     }
 }
@@ -71,7 +76,7 @@ where
         Box::pin(async move {
             let response: Response = future.await?;
 
-            let _unhandled = client.send_request_data(
+            let _unhandled = client.stash_response_data(
                 request_key,
                 ResponseMeta {
                     status: response.status(),

@@ -2,6 +2,6 @@ mod client;
 mod tower_layer;
 
 pub use crate::{
-    client::{ApitallyClient, RequestLogConfig},
+    client::{ApitallyClient, RequestLoggingConfig},
     tower_layer::ApitallyLayer,
 };

@@ -1,11 +1,17 @@
 use std::{
     collections::HashMap,
+    fs::OpenOptions,
+    io::Write,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::http::StatusCode;
+use flate2::{Compression, GzBuilder};
+use reqwest::Body;
 use serde::Serialize;
 use serde_json::json;
+use tokio_util::codec::{BytesCodec, FramedRead};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -13,7 +19,7 @@ pub struct ApitallyClient {
     pub(crate) base_url: String,
     pub(crate) instance_id: Uuid,
     pub(crate) framework: String,
-    pub(crate) request_log_config: RequestLogConfig,
+    pub(crate) request_log_config: RequestLoggingConfig,
     pub(crate) requests: Arc<Mutex<HashMap<Uuid, RequestMeta>>>,
     pub(crate) request_counts: Arc<Mutex<HashMap<RequestKey, usize>>>,
     pub(crate) request_size_sums: Arc<Mutex<HashMap<RequestKey, usize>>>,
@@ -24,7 +30,7 @@ pub struct ApitallyClient {
 }
 
 #[derive(Clone, Default)]
-pub struct RequestLogConfig {
+pub struct RequestLoggingConfig {
     enabled: bool,
     log_query_params: bool,
     log_request_headers: bool,
@@ -33,7 +39,7 @@ pub struct RequestLogConfig {
     log_response_body: bool,
 }
 
-impl RequestLogConfig {
+impl RequestLoggingConfig {
     pub fn blanket_enabled() -> Self {
         Self {
             enabled: true,
@@ -151,7 +157,7 @@ impl ApitallyClient {
         instance
     }
 
-    pub fn set_request_log_config(&mut self, request_log_config: RequestLogConfig) {
+    pub fn set_request_logging_config(&mut self, request_log_config: RequestLoggingConfig) {
         self.request_log_config = request_log_config;
     }
 
@@ -308,7 +314,7 @@ impl ApitallyClient {
 
         #[derive(Serialize)]
         struct RequestLogRequest {
-            timestamp: f32,
+            timestamp: u64,
             method: String,
             path: String,
             url: String,
@@ -328,10 +334,16 @@ impl ApitallyClient {
             body: String,
         }
 
+        let start = SystemTime::now();
+        let timestamp = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let timestamp = timestamp.as_secs();
+
         let body = RequestLogMessage {
             uuid: Uuid::new_v4(),
             request: RequestLogRequest {
-                timestamp: 0.0,
+                timestamp,
                 method: request_meta.method,
                 path: request_meta.matched_path,
                 url: request_meta.url,
@@ -349,12 +361,24 @@ impl ApitallyClient {
             },
         };
 
+        let temp_gzip_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .read(true)
+            .open("requestLog.gz")
+            .unwrap();
+        let mut gz_encoder = GzBuilder::new().write(temp_gzip_file, Compression::default());
+        gz_encoder.write_all(format!("{}\n", serde_json::to_string(&body)?).as_bytes())?;
+        let temp_gzip_file = gz_encoder.finish()?;
+        let stream = FramedRead::new(tokio::fs::File::from_std(temp_gzip_file), BytesCodec::new());
+        let body = Body::wrap_stream(stream);
+
         let base_url = self.base_url.clone();
         tokio::task::spawn(async move {
             let _unhandled = reqwest::Client::new()
                 .post(format!("{base_url}/{URL_LOG_SUFFIX}",))
                 .query(&[("uuid", Uuid::new_v4().to_string())])
-                .body(serde_json::to_string(&body).unwrap())
+                .body(body)
                 .send()
                 .await;
         });

@@ -18,5 +18,4 @@ tower = "0.5.2"
 uuid = { version = "1.11.0", features = ["serde", "v4"] }
 serde = { version = "1.0.216", features = ["derive"] }
 flate2 = "1.0.35"
-tokio-util = { version = "0.7.13", features = ["codec"] }
 futures = "0.3.31"

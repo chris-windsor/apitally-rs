@@ -1,17 +1,15 @@
 use std::{
     collections::HashMap,
     fs::OpenOptions,
-    io::Write,
+    io::{Read, Write},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use axum::http::StatusCode;
 use flate2::{Compression, GzBuilder};
-use reqwest::Body;
 use serde::Serialize;
 use serde_json::json;
-use tokio_util::codec::{BytesCodec, FramedRead};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -237,6 +235,7 @@ impl ApitallyClient {
             .entry(request_store_key.clone())
             .or_insert(response_meta.size) += 1;
 
+        // todo: bulk these first
         if (self.request_log_config.enabled) {
             self.send_log_data(request_meta.clone(), response_meta.clone())?;
         }
@@ -314,7 +313,7 @@ impl ApitallyClient {
 
         #[derive(Serialize)]
         struct RequestLogRequest {
-            timestamp: u64,
+            timestamp: f64,
             method: String,
             path: String,
             url: String,
@@ -338,7 +337,7 @@ impl ApitallyClient {
         let timestamp = start
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        let timestamp = timestamp.as_secs();
+        let timestamp = timestamp.as_secs() as f64;
 
         let body = RequestLogMessage {
             uuid: Uuid::new_v4(),
@@ -365,13 +364,14 @@ impl ApitallyClient {
             .write(true)
             .create(true)
             .read(true)
+            // todo: move to tmp
             .open("requestLog.gz")
             .unwrap();
         let mut gz_encoder = GzBuilder::new().write(temp_gzip_file, Compression::default());
         gz_encoder.write_all(format!("{}\n", serde_json::to_string(&body)?).as_bytes())?;
-        let temp_gzip_file = gz_encoder.finish()?;
-        let stream = FramedRead::new(tokio::fs::File::from_std(temp_gzip_file), BytesCodec::new());
-        let body = Body::wrap_stream(stream);
+        let mut temp_gzip_file = gz_encoder.finish()?;
+        let mut body: Vec<u8> = vec![];
+        temp_gzip_file.read(&mut body)?;
 
         let base_url = self.base_url.clone();
         tokio::task::spawn(async move {

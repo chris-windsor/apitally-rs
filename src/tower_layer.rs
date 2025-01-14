@@ -1,19 +1,24 @@
-use std::task::{Context, Poll};
-
-use axum::{
-    body::HttpBody,
-    extract::{MatchedPath, Request},
-    http::header::CONTENT_LENGTH,
-    response::Response,
+use std::{
+    str::FromStr,
+    task::{Context, Poll},
 };
-use futures_util::future::BoxFuture;
-use tower::{Layer, Service};
-use uuid::Uuid;
 
 use crate::{
     client::{RequestMeta, ResponseMeta},
     ApitallyClient,
 };
+use axum::{
+    body::HttpBody,
+    extract::{MatchedPath, Request},
+    http::{
+        header::{CONTENT_LENGTH, HOST},
+        uri::Scheme,
+    },
+    response::Response,
+};
+use futures_util::future::BoxFuture;
+use tower::{Layer, Service};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ApitallyLayer(pub ApitallyClient);
@@ -55,6 +60,17 @@ where
     fn call(&mut self, request: Request) -> Self::Future {
         let request_key = Uuid::new_v4();
 
+        let heads = request.headers();
+        let url = format!(
+            "{}://{}{}",
+            request
+                .uri()
+                .scheme()
+                .unwrap_or(&Scheme::from_str("http").unwrap()),
+            heads.get(HOST).unwrap().to_str().unwrap(),
+            request.uri().path()
+        );
+
         let _unhandled = self.client.stash_request_data(
             request_key,
             RequestMeta {
@@ -64,10 +80,10 @@ where
                 },
                 matched_path: match request.extensions().get::<MatchedPath>() {
                     Some(matched_path) => matched_path.as_str().to_owned(),
-                    None => request.uri().path().to_owned(),
+                    None => request.uri().to_string(),
                 },
                 method: request.method().as_str().to_owned(),
-                url: request.uri().to_string(),
+                url,
             },
         );
 

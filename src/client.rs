@@ -1,15 +1,14 @@
-use std::{
-    collections::HashMap,
-    fs::OpenOptions,
-    io::{Read, Write},
-    sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
-};
-
 use axum::http::StatusCode;
 use flate2::{Compression, GzBuilder};
 use serde::Serialize;
 use serde_json::json;
+use std::{
+    collections::HashMap,
+    fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -369,9 +368,11 @@ impl ApitallyClient {
             .unwrap();
         let mut gz_encoder = GzBuilder::new().write(temp_gzip_file, Compression::default());
         gz_encoder.write_all(format!("{}\n", serde_json::to_string(&body)?).as_bytes())?;
+        gz_encoder.flush()?;
         let mut temp_gzip_file = gz_encoder.finish()?;
+        temp_gzip_file.seek(SeekFrom::Start(0)).unwrap();
         let mut body: Vec<u8> = vec![];
-        temp_gzip_file.read(&mut body)?;
+        temp_gzip_file.read_to_end(&mut body)?;
 
         let base_url = self.base_url.clone();
         tokio::task::spawn(async move {

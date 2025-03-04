@@ -1,10 +1,9 @@
-use std::{env, net::SocketAddr};
-
 use apitally::{ApitallyClient, ApitallyLayer, RequestLoggingConfig};
 use axum::{response::IntoResponse, routing::get, Json, Router};
 use dotenvy::dotenv;
 use dotenvy_macro::dotenv;
 use serde::{Deserialize, Serialize};
+use std::{env, net::SocketAddr, time::Duration};
 
 #[tokio::main]
 async fn main() {
@@ -23,6 +22,7 @@ async fn main() {
             get(|| async { "howdy from route dynamic!" }),
         )
         .route("/json", get(test_json_body))
+        .route("/long", get(test_long))
         .layer(ApitallyLayer(api_tally_client));
 
     let port = env::var("PORT").unwrap_or_else(|_| "3000".to_string());
@@ -41,4 +41,8 @@ async fn test_json_body(Json(payload): Json<TestJSONPayload>) -> impl IntoRespon
     Json(TestJSONPayload {
         message: payload.message,
     })
+}
+
+async fn test_long() -> impl IntoResponse {
+    tokio::time::sleep(Duration::from_millis(1500)).await;
 }

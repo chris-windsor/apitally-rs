@@ -101,6 +101,7 @@ pub struct ResponseMeta {
     pub headers: Vec<(String, String)>,
     pub size: usize,
     pub status: StatusCode,
+    pub time: f32,
 }
 
 #[derive(Serialize)]
@@ -307,8 +308,9 @@ impl ApitallyClient {
     }
 
     fn convert_body(&self, body: Bytes, content_type: String) -> String {
-        if [mime::APPLICATION_JSON, mime::TEXT_PLAIN]
-            .contains(&Mime::from_str(&content_type).unwrap())
+        if content_type.len() > 0
+            && [mime::APPLICATION_JSON, mime::TEXT_PLAIN]
+                .contains(&Mime::from_str(&content_type).unwrap())
         {
             BASE64_STANDARD.encode(String::from_utf8_lossy(&body).into_owned())
         } else {
@@ -370,7 +372,7 @@ impl ApitallyClient {
             },
             response: RequestLogResponse {
                 status_code: response_meta.status.as_u16(),
-                response_time: 0.1,
+                response_time: response_meta.time,
                 headers: response_meta.headers,
                 size: response_meta.size,
                 body: self.convert_body(response_meta.body, response_meta.content_type),

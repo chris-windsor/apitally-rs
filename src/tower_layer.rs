@@ -1,8 +1,3 @@
-use std::{
-    str::FromStr,
-    task::{Context, Poll},
-};
-
 use crate::{
     client::{RequestMeta, ResponseMeta},
     ApitallyClient,
@@ -17,6 +12,11 @@ use axum::{
     response::Response,
 };
 use futures_util::future::BoxFuture;
+use std::time::SystemTime;
+use std::{
+    str::FromStr,
+    task::{Context, Poll},
+};
 use tower::{Layer, Service};
 use uuid::Uuid;
 
@@ -65,6 +65,7 @@ where
         let client = self.client.clone();
 
         Box::pin(async move {
+            let request_start_time = SystemTime::now();
             let heads = request.headers();
             let url = format!(
                 "{}://{}{}",
@@ -134,6 +135,10 @@ where
             let response = Response::from_parts(parts, Body::from(bytes));
             let body_size = body_clone.len();
 
+            let request_processing_time = SystemTime::now()
+                .duration_since(request_start_time)
+                .unwrap();
+
             client
                 .stash_response_data(
                     request_key,
@@ -157,6 +162,7 @@ where
                             .collect(),
                         size: body_size,
                         status: response.status(),
+                        time: request_processing_time.as_secs_f32(),
                     },
                 )
                 .ok();

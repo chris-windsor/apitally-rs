@@ -1,14 +1,15 @@
-use axum::http::StatusCode;
-use flate2::{Compression, GzBuilder};
-use serde::Serialize;
-use serde_json::json;
 use std::{
     collections::HashMap,
-    fs::OpenOptions,
     io::{Read, Seek, SeekFrom, Write},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use axum::{body::Bytes, http::StatusCode};
+use base64::{prelude::BASE64_STANDARD, Engine};
+use flate2::{Compression, GzBuilder};
+use serde::Serialize;
+use serde_json::json;
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -83,7 +84,10 @@ struct RequestKey {
 
 #[derive(Clone)]
 pub struct RequestMeta {
+    pub body: Bytes,
     pub content_length: usize,
+    pub content_type: String,
+    pub headers: Vec<(String, String)>,
     pub matched_path: String,
     pub method: String,
     pub url: String,
@@ -91,6 +95,8 @@ pub struct RequestMeta {
 
 #[derive(Clone)]
 pub struct ResponseMeta {
+    pub body: Bytes,
+    pub content_type: String,
     pub size: usize,
     pub status: StatusCode,
 }
@@ -235,7 +241,7 @@ impl ApitallyClient {
             .or_insert(response_meta.size) += 1;
 
         // todo: bulk these first
-        if (self.request_log_config.enabled) {
+        if self.request_log_config.enabled {
             self.send_log_data(request_meta.clone(), response_meta.clone())?;
         }
 
@@ -348,24 +354,20 @@ impl ApitallyClient {
                 headers: vec![],
                 size: request_meta.content_length,
                 consumer: "".to_string(),
-                body: "".to_string(),
+                body: BASE64_STANDARD
+                    .encode(String::from_utf8_lossy(&request_meta.body).into_owned()),
             },
             response: RequestLogResponse {
                 status_code: response_meta.status.as_u16(),
                 response_time: 100.0,
                 headers: vec![],
                 size: response_meta.size,
-                body: "".to_string(),
+                body: BASE64_STANDARD
+                    .encode(String::from_utf8_lossy(&response_meta.body).into_owned()),
             },
         };
 
-        let temp_gzip_file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .read(true)
-            // todo: move to tmp
-            .open("requestLog.gz")
-            .unwrap();
+        let temp_gzip_file = tempfile::tempfile().unwrap();
         let mut gz_encoder = GzBuilder::new().write(temp_gzip_file, Compression::default());
         gz_encoder.write_all(format!("{}\n", serde_json::to_string(&body)?).as_bytes())?;
         gz_encoder.flush()?;

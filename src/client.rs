@@ -1,15 +1,16 @@
-use std::{
-    collections::HashMap,
-    io::{Read, Seek, SeekFrom, Write},
-    sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
-};
-
 use axum::{body::Bytes, http::StatusCode};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use flate2::{Compression, GzBuilder};
+use mime::Mime;
 use serde::Serialize;
 use serde_json::json;
+use std::{
+    collections::HashMap,
+    io::{Read, Seek, SeekFrom, Write},
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
@@ -76,7 +77,7 @@ impl RequestLoggingConfig {
 }
 
 #[derive(Eq, Hash, PartialEq, Clone)]
-struct RequestKey {
+pub struct RequestKey {
     method: String,
     path: String,
     status: StatusCode,
@@ -97,6 +98,7 @@ pub struct RequestMeta {
 pub struct ResponseMeta {
     pub body: Bytes,
     pub content_type: String,
+    pub headers: Vec<(String, String)>,
     pub size: usize,
     pub status: StatusCode,
 }
@@ -304,6 +306,16 @@ impl ApitallyClient {
         Ok(())
     }
 
+    fn convert_body(&self, body: Bytes, content_type: String) -> String {
+        if [mime::APPLICATION_JSON, mime::TEXT_PLAIN]
+            .contains(&Mime::from_str(&content_type).unwrap())
+        {
+            BASE64_STANDARD.encode(String::from_utf8_lossy(&body).into_owned())
+        } else {
+            String::from("")
+        }
+    }
+
     fn send_log_data(
         &self,
         request_meta: RequestMeta,
@@ -351,19 +363,17 @@ impl ApitallyClient {
                 method: request_meta.method,
                 path: request_meta.matched_path,
                 url: request_meta.url,
-                headers: vec![],
+                headers: request_meta.headers,
                 size: request_meta.content_length,
                 consumer: "".to_string(),
-                body: BASE64_STANDARD
-                    .encode(String::from_utf8_lossy(&request_meta.body).into_owned()),
+                body: self.convert_body(request_meta.body, request_meta.content_type),
             },
             response: RequestLogResponse {
                 status_code: response_meta.status.as_u16(),
-                response_time: 100.0,
-                headers: vec![],
+                response_time: 0.1,
+                headers: response_meta.headers,
                 size: response_meta.size,
-                body: BASE64_STANDARD
-                    .encode(String::from_utf8_lossy(&response_meta.body).into_owned()),
+                body: self.convert_body(response_meta.body, response_meta.content_type),
             },
         };
 

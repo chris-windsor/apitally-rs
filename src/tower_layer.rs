@@ -145,6 +145,16 @@ where
                             .and_then(|header_value| header_value.to_str().ok())
                             .unwrap_or_default()
                             .to_string(),
+                        headers: response
+                            .headers()
+                            .iter()
+                            .map(|(header_name, header_value)| {
+                                (
+                                    header_name.as_str().parse().ok().unwrap(),
+                                    header_value.to_str().unwrap().to_string(),
+                                )
+                            })
+                            .collect(),
                         size: body_size,
                         status: response.status(),
                     },
